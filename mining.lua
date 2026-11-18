@@ -10,9 +10,19 @@ local targets = {
     ["minecraft:gold_ore"] = { "Gold", 0xFFCD35 },
     ["minecraft:redstone_ore"] = { "Redstone", 0xFF4040 },
     ["mekanism:osmium_ore"] = { "Osmium", 0x9DB6FF },
+    ["minecraft:ancient_debris"] = { "Ancient Debris", 0xBB7755 },
+    ["minecraft:nether_quartz_ore"] = { "Nether Quartz", 0xFFF0D9 },
+    ["mekanism:fluorite_ore"] = { "Fluorite", 0xA8EEA0 },
+    ["replication:replica_ore"] = { "Replica Ore", 0xD18BFF },
     ["minecraft:chest"] = { "Chest", 0xFF9D36 },
     ["minecraft:trapped_chest"] = { "Trapped Chest", 0xFF6655 },
     ["minecraft:ender_chest"] = { "Ender Chest", 0x67D9BC },
+    ["lootr:lootr_chest"] = { "Lootr Chest", 0xFFD36A },
+    ["lootr:lootr_trapped_chest"] = { "Lootr Trapped Chest", 0xFF8D51 },
+    ["lootr:lootr_barrel"] = { "Lootr Barrel", 0xD9A362 },
+    ["lootr:lootr_shulker"] = { "Lootr Shulker", 0xE79AF1 },
+    ["lootr:lootr_inventory"] = { "Lootr Custom Inventory", 0xFFC18D },
+    ["lootr:decorated_pot"] = { "Lootr Decorated Pot", 0xD7896A },
 }
 
 local directions = {
