@@ -24,6 +24,7 @@ local blockCenter = vector.new(0.5, 0.5, 0.5)
 local scanRadius = 8
 local memoryRadiusSquared = 30 * 30
 local memoryPath = "mining-memory.json"
+local unknownDimension = "unknown"
 local remembered = {}
 local memoryDimension
 local memoryLoaded = false
@@ -163,12 +164,33 @@ local function clearMarkers()
     labels = {}
 end
 
+local function getDimension()
+    if type(glasses.getOwner) == "function" then
+        local owner = glasses.getOwner()
+        if owner and type(owner.dimension) == "string" then return owner.dimension end
+    end
+
+    local detector = peripheral.find("environment_detector")
+    if detector and type(detector.getDimension) == "function" then
+        local dimension = detector.getDimension()
+        if type(dimension) == "string" then return dimension end
+    end
+
+    return unknownDimension
+end
+
+local function memoryFile(dimension)
+    if dimension == unknownDimension then return "mining-memory-unknown.json" end
+    return memoryPath
+end
+
 local function loadMemory(dimension)
     if memoryLoaded then return end
     memoryLoaded = true
-    if not fs.exists(memoryPath) then return end
+    local path = memoryFile(dimension)
+    if not fs.exists(path) then return end
 
-    local file = fs.open(memoryPath, "r")
+    local file = fs.open(path, "r")
     if not file then return end
     local content = file.readAll()
     file.close()
@@ -195,7 +217,7 @@ local function saveMemory()
         blocks[#blocks + 1] = { x = hit.pos.x, y = hit.pos.y, z = hit.pos.z, id = hit.id }
     end
     local ok, err = pcall(function()
-        local file = assert(fs.open(memoryPath, "w"), "Cannot open memory file")
+        local file = assert(fs.open(memoryFile(memoryDimension), "w"), "Cannot open memory file")
         file.write(textutils.serializeJSON({ dimension = memoryDimension, blocks = blocks }))
         file.close()
     end)
@@ -234,14 +256,11 @@ end
 local function scan()
     if not glasses.isEquipped() then return end
 
-    local owner = glasses.getOwner()
-    if not owner or not owner.dimension then
-        print("Cannot determine the wearer's dimension")
-        return
+    local dimension = getDimension()
+    if dimension ~= memoryDimension then
+        remembered = {}
+        memoryLoaded = false
     end
-
-    local dimension = owner.dimension
-    if memoryDimension and dimension ~= memoryDimension then remembered = {} end
     memoryDimension = dimension
     loadMemory(dimension)
 
@@ -281,8 +300,7 @@ end
 local function faceLabels()
     if #labels == 0 or not glasses.isEquipped() then return end
 
-    local owner = glasses.getOwner()
-    if not owner or owner.dimension ~= memoryDimension then
+    if getDimension() ~= memoryDimension then
         clearMarkers()
         return
     end
