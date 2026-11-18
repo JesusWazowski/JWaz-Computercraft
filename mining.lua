@@ -21,6 +21,12 @@ local directions = {
     vector.new(0, 0, 1), vector.new(0, 0, -1),
 }
 local blockCenter = vector.new(0.5, 0.5, 0.5)
+local scanRadius = 8
+local memoryRadiusSquared = 30 * 30
+local memoryPath = "mining-memory.json"
+local remembered = {}
+local memoryDimension
+local memoryLoaded = false
 local markerIds = {}
 local labels = {}
 
@@ -157,47 +163,63 @@ local function clearMarkers()
     labels = {}
 end
 
-local function scan()
-    if not glasses.isEquipped() then return end
+local function loadMemory(dimension)
+    if memoryLoaded then return end
+    memoryLoaded = true
+    if not fs.exists(memoryPath) then return end
 
-    local eye = vector.new(overlay.getEyePosition())
-    local blocks, err = scanner.scanBlocks(8)
-    if not blocks then
-        print(err or "Scan failed")
-        return
-    end
+    local file = fs.open(memoryPath, "r")
+    if not file then return end
+    local content = file.readAll()
+    file.close()
+    local ok, data = pcall(textutils.unserializeJSON, content)
+    if not ok or type(data) ~= "table" or data.dimension ~= dimension
+        or type(data.blocks) ~= "table" then return end
 
-    local targetsByPosition = {}
-    local hits = {}
-    for _, block in ipairs(blocks) do
-        local id = block.name:gsub(":deepslate_", ":")
-        local target = targets[id]
-        if target then
-            -- World block centers are at integer coordinates plus 0.5.
-            local pos = vector.new(math.floor(eye.x + block.x),
-                math.floor(eye.y + block.y), math.floor(eye.z + block.z))
-            local index = key(pos)
-            if not targetsByPosition[index] then
-                local hit = { pos = pos, target = target }
-                targetsByPosition[index] = hit
-                hits[#hits + 1] = hit
-            end
+    for _, block in ipairs(data.blocks) do
+        if type(block) == "table" and targets[block.id]
+            and type(block.x) == "number" and block.x == math.floor(block.x)
+            and type(block.y) == "number" and block.y == math.floor(block.y)
+            and type(block.z) == "number" and block.z == math.floor(block.z)
+            and math.abs(block.x) <= 30000000 and math.abs(block.y) <= 30000000
+            and math.abs(block.z) <= 30000000 then
+            local pos = vector.new(block.x, block.y, block.z)
+            remembered[key(pos)] = { pos = pos, id = block.id, target = targets[block.id] }
         end
     end
+end
+
+local function saveMemory()
+    local blocks = {}
+    for _, hit in pairs(remembered) do
+        blocks[#blocks + 1] = { x = hit.pos.x, y = hit.pos.y, z = hit.pos.z, id = hit.id }
+    end
+    local ok, err = pcall(function()
+        local file = assert(fs.open(memoryPath, "w"), "Cannot open memory file")
+        file.write(textutils.serializeJSON({ dimension = memoryDimension, blocks = blocks }))
+        file.close()
+    end)
+    if not ok then print("Could not save scan memory: " .. tostring(err)) end
+end
+
+local function drawMemory(eye)
+    -- Group a copy so flood filling does not consume the saved blocks.
+    local targetsByPosition = {}
+    for index, hit in pairs(remembered) do targetsByPosition[index] = hit end
 
     clearMarkers()
-    for _, hit in ipairs(hits) do
-        if targetsByPosition[key(hit.pos)] then
+    for index, hit in pairs(remembered) do
+        if targetsByPosition[index] then
             local points = { hit.pos }
-            targetsByPosition[key(hit.pos)] = nil
+            targetsByPosition[index] = nil
             local i = 1
             while i <= #points do
                 for _, direction in ipairs(directions) do
                     local neighbor = points[i] + direction
-                    local index = key(neighbor)
-                    local nextHit = targetsByPosition[index]
+                    local neighborIndex = key(neighbor)
+                    local nextHit = targetsByPosition[neighborIndex]
                     if nextHit and nextHit.target == hit.target then
-                        targetsByPosition[index] = nil
+                        targetsByPosition[neighborIndex] = nil
                         points[#points + 1] = neighbor
                     end
                 end
@@ -206,11 +228,64 @@ local function scan()
             drawDeposit(points, hit.target, eye)
         end
     end
+    if not overlay.isAutoUpdating() then overlay.update() end
+end
+
+local function scan()
+    if not glasses.isEquipped() then return end
+
+    local owner = glasses.getOwner()
+    if not owner or not owner.dimension then
+        print("Cannot determine the wearer's dimension")
+        return
+    end
+
+    local dimension = owner.dimension
+    if memoryDimension and dimension ~= memoryDimension then remembered = {} end
+    memoryDimension = dimension
+    loadMemory(dimension)
+
+    local eye = vector.new(overlay.getEyePosition())
+    local blocks, err = scanner.scanBlocks(scanRadius)
+    local origin = vector.new(math.floor(eye.x), math.floor(eye.y), math.floor(eye.z))
+    for index, hit in pairs(remembered) do
+        local delta = hit.pos - origin
+        local inScan = math.abs(delta.x) <= scanRadius
+            and math.abs(delta.y) <= scanRadius and math.abs(delta.z) <= scanRadius
+        if lengthSquared(hit.pos + blockCenter - eye) > memoryRadiusSquared
+            or (blocks and inScan) then
+            remembered[index] = nil
+        end
+    end
+
+    if blocks then
+        for _, block in ipairs(blocks) do
+            local id = block.name:gsub(":deepslate_", ":")
+            local target = targets[id]
+            if target then
+                local pos = vector.new(math.floor(eye.x + block.x),
+                    math.floor(eye.y + block.y), math.floor(eye.z + block.z))
+                if lengthSquared(pos + blockCenter - eye) <= memoryRadiusSquared then
+                    remembered[key(pos)] = { pos = pos, id = id, target = target }
+                end
+            end
+        end
+    else
+        print(err or "Scan failed")
+    end
+
+    saveMemory()
+    drawMemory(eye)
 end
 
 local function faceLabels()
     if #labels == 0 or not glasses.isEquipped() then return end
 
+    local owner = glasses.getOwner()
+    if not owner or owner.dimension ~= memoryDimension then
+        clearMarkers()
+        return
+    end
     local eye = vector.new(overlay.getEyePosition())
     for _, label in ipairs(labels) do
         local pitch, yaw = labelRotation(label.center, eye)
