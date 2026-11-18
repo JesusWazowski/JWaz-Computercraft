@@ -7,6 +7,7 @@ assert(glasses.modules["advancedperipherals:hotkey"], "Install the Hotkey Module
 local targets = {
     ["minecraft:diamond_ore"] = { "Diamond", 0x44E8F5 },
     ["minecraft:iron_ore"] = { "Iron", 0xD8AE91 },
+    ["minecraft:copper_ore"] = { "Copper", 0xDC8051 },
     ["minecraft:gold_ore"] = { "Gold", 0xFFCD35 },
     ["minecraft:redstone_ore"] = { "Redstone", 0xFF4040 },
     ["mekanism:osmium_ore"] = { "Osmium", 0x9DB6FF },
